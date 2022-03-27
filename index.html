@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js">  </script>
+  <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+  <script src="https://unpkg.com/moralis/dist/moralis.js"></script>
+  <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="application/javascript"></script>
+  <script src="https://cdn.jsdelivr.net/npm/merkletreejs@latest/merkletree.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/keccak256@latest/keccak256.js"></script>
+</head>
+
+<body>
+  <div>
+    <button class="generate-tree-button">Generate tree</button>
+    <button class="load-button">Load</button>
+    <button class="hex-root-button">Hex root</button>
+    <div id="status"></div>
+    <div id="nfts"></div>
+  </div>
+  <script type="text/javascript">
+
+    const tokens =
+    {
+      "1": "recipient_address",
+      "2": "recipient_address",
+      "3": "recipient_address",
+    }
+
+    const merkleTree = new MerkleTree(Object.entries(tokens).map(token => hashToken(...token)), keccak256, { sortPairs: true })
+    const collectionAddress = "smart_contract_address"
+
+    var provider;
+    var signer;
+
+    window.addEventListener('load', async () => {
+      if (window.ethereum) {
+        window.web3 = new Web3(ethereum);
+        try {
+          await ethereum.enable();
+          initApp()
+        } catch (err) {
+          console.log(err)
+          $('#status').html('User denied account access', err)
+        }
+      } else if (window.web3) {
+        window.web3 = new Web3(web3.currentProvider)
+        initApp()
+      } else {
+        $('#status').html('No Metamask (or other Web3 Provider) installed')
+      }
+    })
+
+    function initApp() {
+      initEthers()
+      initMoralis()
+      initSignButton()
+      initLoadNftsButton()
+      initHexRootButton()
+    }
+
+    function initEthers() {
+      provider = new ethers.providers.Web3Provider(web3.currentProvider);
+      signer = provider.getSigner()
+    }
+
+    function initMoralis() {
+      const serverUrl = "your_moralis_server_url"
+      const appId = "your_moralis_app_id"
+
+      Moralis.start({ serverUrl, appId })
+    }
+
+    async function initSignButton() {
+      $('.generate-tree-button').click(() => {
+        createMerkleDrop()
+      })
+
+      async function createMerkleDrop() {
+
+        await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+        var content = Date.now() + " Generated tokens: \n\n"
+        var tokenObjects = new Array()
+
+        for ([tokenId, address] of Object.entries(tokens)) {
+          tokenObjects.push(await getProof(tokenId, address))
+        }
+
+        content += JSON.stringify(tokenObjects)
+
+        downloadFile("merkleTree.json", content)
+      }
+
+      async function getProof(_tokenId, _address) {
+        const hexProof = merkleTree.getHexProof(hashToken(_tokenId, address))
+        return {
+          tokenId: _tokenId,
+          address: _address,
+          hexProof: hexProof,
+        }
+      }
+
+    }
+
+    function initLoadNftsButton() {
+
+      $('.load-button').click(() => {
+        const nfts = getUserNfts()
+        console.log(nfts)
+      })
+
+      async function getUserNfts() {
+        const userAddress = await signer.getAddress()
+        const options = { chain: 'Rinkeby', address: userAddress };
+        return await Moralis.Web3API.account.getNFTs(options);
+      }
+
+      async function getNftTokenMetadata(_collectionAddress, _tokenId) {
+        const options = { chain: 'Rinkeby', address: _collectionAddress, token_id: _tokenId };
+        return await Moralis.Web3API.token.getTokenIdMetadata(options);
+      }
+
+    }
+
+    function initHexRootButton() {
+      $('.hex-root-button').click(() => {
+        console.log(merkleTree.getHexRoot())
+      })
+    }
+
+    function hashToken(tokenId, account) {
+      const leaf = ethers.utils.solidityKeccak256(['uint256', 'address'], [tokenId, account]).slice(2)
+      console.log(hexStringToUint8Array(leaf))
+      return hexStringToUint8Array(leaf)
+    }
+
+    function hexStringToUint8Array(hexString) {
+      if (hexString.length % 2 !== 0) {
+        throw "Invalid hexString";
+      }/*from  w w w.  j  av a 2s  . c  o  m*/
+      var arrayBuffer = new Uint8Array(hexString.length / 2);
+
+      for (var i = 0; i < hexString.length; i += 2) {
+        var byteValue = parseInt(hexString.substr(i, 2), 16);
+        if (isNaN(byteValue)) {
+          throw "Invalid hexString";
+        }
+        arrayBuffer[i / 2] = byteValue;
+      }
+
+      return arrayBuffer;
+    }
+
+    function downloadFile(filename, content) {
+      // It works on all HTML5 Ready browsers as it uses the download attribute of the <a> element:
+      const element = document.createElement('a');
+
+      //A blob is a data type that can store binary data
+      // "type" is a MIME type
+      // It can have a different value, based on a file you want to save
+      const formattedContent = content.replace(/\n/g, "\r\n");
+
+      const blob = new Blob([formattedContent], { type: 'plain/text', endings: 'native' });
+
+      //createObjectURL() static method creates a DOMString containing a URL representing the object given in the parameter.
+      const fileUrl = URL.createObjectURL(blob);
+
+      //setAttribute() Sets the value of an attribute on the specified element.
+      element.setAttribute('href', fileUrl); //file location
+      element.setAttribute('download', filename); // file name
+      element.style.display = 'none';
+
+      //use appendChild() method to move an element from one element to another
+      document.body.appendChild(element);
+      element.click();
+
+      //The removeChild() method of the Node interface removes a child node from the DOM and returns the removed node
+      document.body.removeChild(element);
+    };
+  </script>
+</body>
+
+</html>
